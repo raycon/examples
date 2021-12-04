@@ -1,0 +1,15 @@
+# Disable p6spy
+decorator:
+  datasource:
+    p6spy:
+      enable-logging: false
+
+---
+# Add p6spy profile
+spring:
+  profiles: p6spy
+
+decorator:
+  datasource:
+    p6spy:
+      enable-logging: true
