@@ -9,7 +9,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.sql.SQLException;
-import java.util.Locale;
 
 @Component
 public class P6SpyFormatter extends JdbcEventListener implements MessageFormattingStrategy {
@@ -22,26 +21,32 @@ public class P6SpyFormatter extends JdbcEventListener implements MessageFormatti
   @Override
   public String formatMessage(int connectionId, String now, long elapsed, String category, String prepared, String sql, String url) {
     StringBuilder sb = new StringBuilder();
-    sb.append("took ").append(elapsed).append("ms, ").append(category);
+    sb.append(category).append(" ").append(elapsed).append("ms");
     if (StringUtils.hasText(sql)) {
-      sb.append(formatQuery(sql));
+      sb.append(highlight(format(sql)));
     }
     return sb.toString();
   }
 
-  private String formatQuery(String sql) {
-    String formatted;
+  private String format(String sql) {
     if (isDDL(sql)) {
-      formatted = FormatStyle.DDL.getFormatter().format(sql);
-    } else {
-      formatted = FormatStyle.BASIC.getFormatter().format(sql);
+      return FormatStyle.DDL.getFormatter().format(sql);
+    } else if (isBasic(sql)) {
+      return FormatStyle.BASIC.getFormatter().format(sql);
     }
-    return FormatStyle.HIGHLIGHT.getFormatter().format(formatted);
+    return sql;
   }
 
-  private boolean isDDL(String query) {
-    query = query.trim().toLowerCase(Locale.ROOT);
-    return query.startsWith("create") || query.startsWith("alter") || query.startsWith("comment");
+  private String highlight(String sql) {
+    return FormatStyle.HIGHLIGHT.getFormatter().format(sql);
+  }
+
+  private boolean isDDL(String sql) {
+    return sql.startsWith("create") || sql.startsWith("alter") || sql.startsWith("comment");
+  }
+
+  private boolean isBasic(String sql) {
+    return sql.startsWith("select") || sql.startsWith("insert") || sql.startsWith("update") || sql.startsWith("delete");
   }
 
 }
