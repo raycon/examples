@@ -1,32 +1,43 @@
 package com.raegon.example.batch.jpa;
 
-import lombok.AccessLevel;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
+import lombok.extern.slf4j.Slf4j;
 
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
+import javax.persistence.*;
 
 @Getter
 @Setter
+@ToString
+@Slf4j
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 
 @Entity
 public class Product {
 
   @Id
-  @GeneratedValue(strategy = GenerationType.IDENTITY)
-  private Long id;
+  private Integer id;
 
-  private String name;
+  @Enumerated(EnumType.STRING)
+  private State state = State.NEW;
 
-  private String description;
+  public Product(Integer id) {
+    this.id = id;
+  }
 
-  public Product(String name) {
-    this.name = name;
+  @PostUpdate
+  public void postUpdate() {
+    log.info("Updated {}", this);
+  }
+
+  @PostPersist
+  public void postPersist() {
+    log.info("Persisted {}", this);
+  }
+
+  public enum State {
+    NEW,
+    PROCESS,
+    DONE
   }
 
 }
