@@ -13,13 +13,16 @@ import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.batch.item.ItemReader;
 import org.springframework.batch.item.ItemWriter;
+import org.springframework.batch.item.data.builder.RepositoryItemReaderBuilder;
 import org.springframework.batch.item.database.builder.JpaPagingItemReaderBuilder;
 import org.springframework.batch.repeat.RepeatStatus;
 import org.springframework.context.annotation.Bean;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.persistence.EntityManagerFactory;
+import java.util.Collections;
 import java.util.stream.IntStream;
 
 @Slf4j
@@ -37,37 +40,62 @@ public class ProductJobConfig {
   private final ProductRepository repo;
 
   @Bean
-  public Job productJob(Step createStep, Step updateStep, JobExecutionListener jobExecutionListener) {
+  public Job productJob(Step initProductStep,
+                        Step jpaPagingItemReaderStep,
+                        Step repositoryItemReaderStep,
+                        JobExecutionListener jobExecutionListener) {
     return jobFactory.get("product-job")
-        .start(createStep)
-        .next(updateStep)
+        .start(initProductStep)
+        .next(jpaPagingItemReaderStep)
+        .next(initProductStep)
+        .next(repositoryItemReaderStep)
         .listener(jobExecutionListener)
         .build();
   }
 
   @Bean
-  public Step createStep(Tasklet createProductTasklet) {
-    return stepFactory.get("create-step")
-        .tasklet(createProductTasklet)
+  public Step initProductStep(Tasklet initProductTasklet,
+                              StepExecutionListener stepExecutionListener) {
+    return stepFactory.get("init-step")
+        .tasklet(initProductTasklet)
+        .listener(stepExecutionListener)
         .build();
   }
 
   @Bean
-  public Step updateStep(ItemReader<Product> reader,
-                         ItemProcessor<Product, Product> processor,
-                         ItemWriter<Product> writer,
-                         ChunkListener chunkListener) {
-    return stepFactory.get("update-step")
+  public Step jpaPagingItemReaderStep(ItemReader<Product> jpaPagingItemReader,
+                                      ItemProcessor<Product, Product> processor,
+                                      ItemWriter<Product> writer,
+                                      StepExecutionListener stepExecutionListener,
+                                      ChunkListener chunkListener) {
+    return stepFactory.get("jpa-paging-item-reader-step")
         .<Product, Product>chunk(CHUNK_SIZE)
-        .reader(reader)
+        .reader(jpaPagingItemReader)
         .processor(processor)
         .writer(writer)
+        .listener(stepExecutionListener)
         .listener(chunkListener)
         .build();
   }
 
   @Bean
-  public Tasklet createProductTasklet() {
+  public Step repositoryItemReaderStep(ItemReader<Product> repositoryItemReader,
+                                       ItemProcessor<Product, Product> processor,
+                                       ItemWriter<Product> writer,
+                                       StepExecutionListener stepExecutionListener,
+                                       ChunkListener chunkListener) {
+    return stepFactory.get("repository-item-reader-step")
+        .<Product, Product>chunk(CHUNK_SIZE)
+        .reader(repositoryItemReader)
+        .processor(processor)
+        .writer(writer)
+        .listener(chunkListener)
+        .listener(stepExecutionListener)
+        .build();
+  }
+
+  @Bean
+  public Tasklet initProductTasklet() {
     return (contribution, chunkContext) -> {
       repo.deleteAll();
       IntStream.rangeClosed(1, 7)
@@ -78,7 +106,7 @@ public class ProductJobConfig {
   }
 
   @Bean
-  public ItemReader<Product> productReader(EntityManagerFactory emf) {
+  public ItemReader<Product> jpaPagingItemReader(EntityManagerFactory emf) {
     return new JpaPagingItemReaderBuilder<Product>()
         .queryString("SELECT p FROM Product p")
         .pageSize(PAGE_SIZE)
@@ -88,10 +116,22 @@ public class ProductJobConfig {
   }
 
   @Bean
+  public ItemReader<Product> repositoryItemReader() {
+    return new RepositoryItemReaderBuilder<Product>()
+        .repository(repo)
+        .methodName("findAll")
+        .pageSize(PAGE_SIZE)
+        .saveState(false)
+        .sorts(Collections.singletonMap("id", Sort.Direction.ASC))
+        .name("repository-item-reader")
+        .build();
+  }
+
+  @Bean
   public ItemProcessor<Product, Product> productProcessor() {
     return item -> {
       State state = State.PROCESS;
-      log.info("Processor {}, {} -> {}", item.getId(), item.getState(), state);
+      log.info("Process : {} > {}", item, state);
       item.setState(state);
       return item;
     };
@@ -102,7 +142,7 @@ public class ProductJobConfig {
     return items -> items.forEach(item -> {
       Product p = repo.getById(item.getId());
       State state = State.DONE;
-      log.info("Writer {}, {} -> {}", item.getId(), item.getState(), state);
+      log.info("Write   : {} > {}", item, state);
       p.setState(state);
       repo.save(p);
     });
@@ -122,9 +162,27 @@ public class ProductJobConfig {
 
       @Override
       public void afterJob(JobExecution jobExecution) {
-        repo.findAll().forEach(product -> log.info(product.toString()));
+        // Do nothing
       }
     };
+  }
+
+  @Bean
+  public StepExecutionListener stepExecutionListener() {
+    return new StepExecutionListener() {
+      @Override
+      public void beforeStep(StepExecution stepExecution) {
+        // Do nothing
+      }
+
+      @Override
+      public ExitStatus afterStep(StepExecution stepExecution) {
+        log.info("Step Finished");
+        repo.findAll().forEach(product -> log.info("{}", product));
+        return ExitStatus.COMPLETED;
+      }
+    };
+
   }
 
   @Bean
@@ -132,17 +190,17 @@ public class ProductJobConfig {
     return new ChunkListener() {
       @Override
       public void beforeChunk(ChunkContext context) {
-        log.info("Chunk start");
+        log.info("↓ Chunk start");
       }
 
       @Override
       public void afterChunk(ChunkContext context) {
-        log.info("Chunk end");
+        log.info("↑ Chunk end");
       }
 
       @Override
       public void afterChunkError(ChunkContext context) {
-
+        // Do nothing
       }
     };
   }

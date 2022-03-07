@@ -26,12 +26,12 @@ public class Product {
 
   @PostUpdate
   public void postUpdate() {
-    log.info("Updated {}", this);
+    log.info("Updated : {}", this);
   }
 
   @PostPersist
   public void postPersist() {
-    log.info("Persisted {}", this);
+    log.info("Persisted : {}", this);
   }
 
   public enum State {
