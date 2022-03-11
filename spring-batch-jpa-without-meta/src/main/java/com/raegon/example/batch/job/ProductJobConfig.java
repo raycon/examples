@@ -17,8 +17,8 @@ import org.springframework.batch.item.data.builder.RepositoryItemReaderBuilder;
 import org.springframework.batch.item.database.builder.JpaPagingItemReaderBuilder;
 import org.springframework.batch.repeat.RepeatStatus;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.data.domain.Sort;
-import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.persistence.EntityManagerFactory;
@@ -26,7 +26,7 @@ import java.util.Collections;
 import java.util.stream.IntStream;
 
 @Slf4j
-@Component
+@Configuration
 @RequiredArgsConstructor
 public class ProductJobConfig {
 
@@ -35,62 +35,51 @@ public class ProductJobConfig {
 
   private final JobBuilderFactory jobFactory;
   private final StepBuilderFactory stepFactory;
-  private final PlatformTransactionManager transactionManager;
 
+  private final PlatformTransactionManager transactionManager;
+  private final EntityManagerFactory entityManagerFactory;
   private final ProductRepository repo;
 
   @Bean
-  public Job productJob(Step initProductStep,
-                        Step jpaPagingItemReaderStep,
-                        Step repositoryItemReaderStep,
-                        JobExecutionListener jobExecutionListener) {
+  public Job productJob() {
     return jobFactory.get("product-job")
-        .start(initProductStep)
-        .next(jpaPagingItemReaderStep)
-        .next(initProductStep)
-        .next(repositoryItemReaderStep)
-        .listener(jobExecutionListener)
+        .start(initProductStep())
+        .next(jpaPagingItemReaderStep())
+        .next(initProductStep())
+        .next(repositoryItemReaderStep())
+        .listener(jobExecutionListener())
         .build();
   }
 
   @Bean
-  public Step initProductStep(Tasklet initProductTasklet,
-                              StepExecutionListener stepExecutionListener) {
+  public Step initProductStep() {
     return stepFactory.get("init-step")
-        .tasklet(initProductTasklet)
-        .listener(stepExecutionListener)
+        .tasklet(initProductTasklet())
+        .listener(stepExecutionListener())
         .build();
   }
 
   @Bean
-  public Step jpaPagingItemReaderStep(ItemReader<Product> jpaPagingItemReader,
-                                      ItemProcessor<Product, Product> processor,
-                                      ItemWriter<Product> writer,
-                                      StepExecutionListener stepExecutionListener,
-                                      ChunkListener chunkListener) {
+  public Step jpaPagingItemReaderStep() {
     return stepFactory.get("jpa-paging-item-reader-step")
         .<Product, Product>chunk(CHUNK_SIZE)
-        .reader(jpaPagingItemReader)
-        .processor(processor)
-        .writer(writer)
-        .listener(stepExecutionListener)
-        .listener(chunkListener)
+        .reader(jpaPagingItemReader())
+        .processor(productProcessor())
+        .writer(productWriter())
+        .listener(stepExecutionListener())
+        .listener(chunkListener())
         .build();
   }
 
   @Bean
-  public Step repositoryItemReaderStep(ItemReader<Product> repositoryItemReader,
-                                       ItemProcessor<Product, Product> processor,
-                                       ItemWriter<Product> writer,
-                                       StepExecutionListener stepExecutionListener,
-                                       ChunkListener chunkListener) {
+  public Step repositoryItemReaderStep() {
     return stepFactory.get("repository-item-reader-step")
         .<Product, Product>chunk(CHUNK_SIZE)
-        .reader(repositoryItemReader)
-        .processor(processor)
-        .writer(writer)
-        .listener(chunkListener)
-        .listener(stepExecutionListener)
+        .reader(repositoryItemReader())
+        .processor(productProcessor())
+        .writer(productWriter())
+        .listener(chunkListener())
+        .listener(stepExecutionListener())
         .build();
   }
 
@@ -106,11 +95,11 @@ public class ProductJobConfig {
   }
 
   @Bean
-  public ItemReader<Product> jpaPagingItemReader(EntityManagerFactory emf) {
+  public ItemReader<Product> jpaPagingItemReader() {
     return new JpaPagingItemReaderBuilder<Product>()
         .queryString("SELECT p FROM Product p")
         .pageSize(PAGE_SIZE)
-        .entityManagerFactory(emf)
+        .entityManagerFactory(entityManagerFactory)
         .name("product-reader")
         .build();
   }
